@@ -1,15 +1,16 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(airsim_ros_pkgs)
 
-## Compile as C++11, supported in ROS Kinetic and newer
+# # Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
+# # Find catkin macros and libraries
+# # if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+# # is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   message_generation
   nav_msgs
+
   # nodelet
   roscpp
   rospy
@@ -24,13 +25,13 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_geometry_msgs
 )
 
-
 add_message_files(
   FILES
   GimbalAngleEulerCmd.msg
   GimbalAngleQuatCmd.msg
   GPSYaw.msg
   VelCmd.msg
+  PositionCommand.msg
   VelCmdGroup.msg
   CarControls.msg
   CarState.msg
@@ -57,10 +58,8 @@ generate_messages(
   geographic_msgs
 )
 
-
-
 catkin_package(
-  CATKIN_DEPENDS message_runtime roscpp std_msgs # nodelet 
+  CATKIN_DEPENDS message_runtime roscpp std_msgs # nodelet
 )
 
 include_directories(
@@ -77,21 +76,25 @@ add_executable(pd_position_controller_simple_node src/pd_position_controller_sim
 target_link_libraries(pd_position_controller_simple_node pd_position_controller_simple ${catkin_LIBRARIES})
 
 install(TARGETS
-    #list of nodes
-    pd_position_controller_simple_node
-    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+
+  # list of nodes
+  pd_position_controller_simple_node
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-install(TARGETS 
-    #list of shared libraries
-    pd_position_controller_simple
-    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+install(TARGETS
+
+  # list of shared libraries
+  pd_position_controller_simple
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 )
 
-install(FILES 
-  #list of necessary files (xml...)
+install(FILES
+
+  # list of necessary files (xml...)
   README.md
+
   # settings.json
   # nodelet_plugins.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}

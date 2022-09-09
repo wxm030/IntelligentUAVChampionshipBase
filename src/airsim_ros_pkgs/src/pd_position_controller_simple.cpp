@@ -76,14 +76,16 @@ void PIDPositionController::initialize_ros()
         ROS_INFO_STREAM("Waiting vehicle name");
     }
     // ROS publishers
-    airsim_vel_cmd_world_frame_pub_ = nh_.advertise<airsim_ros_pkgs::VelCmd>("/airsim_node/drone_1/vel_cmd_world_frame", 1);
+    airsim_vel_cmd_body_frame_pub_ = nh_.advertise<airsim_ros_pkgs::VelCmd>("/airsim_node/drone_1/vel_cmd_body_frame", 1);
 
     // ROS subscribers
-    airsim_odom_sub_ = nh_.subscribe("/airsim_node/drone_1/odom_local_ned", 50, &PIDPositionController::airsim_odom_cb, this);
+    airsim_odom_sub_ = nh_.subscribe("vins_estimator/odometry", 50, &PIDPositionController::airsim_odom_cb, this); /// airsim_node/drone_1/odom_local_ned
+    airsim_position_cmd_sub_ = nh_private_.subscribe("/ego_planner/position_cmd", 50, &PIDPositionController::airsim_position_cmd_cb, this);
+
     home_geopoint_sub_ = nh_.subscribe("/airsim_node/home_geo_point", 50, &PIDPositionController::home_geopoint_cb, this);
     // todo publish this under global nodehandle / "airsim node" and hide it from user
-    local_position_goal_srvr_ = nh_.advertiseService("/airsim_node/local_position_goal", &PIDPositionController::local_position_goal_srv_cb, this);
-    local_position_goal_override_srvr_ = nh_.advertiseService("/airsim_node/local_position_goal/override", &PIDPositionController::local_position_goal_srv_override_cb, this);
+    // local_position_goal_srvr_ = nh_.advertiseService("/airsim_node/local_position_goal", &PIDPositionController::local_position_goal_srv_cb, this);
+    // local_position_goal_override_srvr_ = nh_.advertiseService("/airsim_node/local_position_goal/override", &PIDPositionController::local_position_goal_srv_override_cb, this);
     // gps_goal_srvr_ = nh_.advertiseService("/airsim_node/gps_goal", &PIDPositionController::gps_goal_srv_cb, this);
     // gps_goal_override_srvr_ = nh_.advertiseService("/airsim_node/gps_goal/override", &PIDPositionController::gps_goal_srv_override_cb, this);
 
@@ -96,6 +98,24 @@ void PIDPositionController::home_geopoint_cb(const airsim_ros_pkgs::GPSYaw& gps_
     ROS_INFO("get home geo.");
 }
 
+void PIDPositionController::airsim_position_cmd_cb(const airsim_ros_pkgs::PositionCommand::ConstPtr &cmd)
+{
+    // this tells the update timer callback to not do active hovering
+    if (!got_goal_once_)
+        got_goal_once_ = true;
+
+    target_position_.x = cmd->position.x;
+    target_position_.y = cmd->position.y;
+    target_position_.z = cmd->position.z;
+    target_position_.yaw = cmd->yaw;
+    ROS_INFO_STREAM("[PIDPositionController] got goal: x=" << target_position_.x << " y=" << target_position_.y << " z=" << target_position_.z << " yaw=" << target_position_.yaw);
+
+    // todo error checks
+    // todo fill response
+    has_goal_ = true;
+    reached_goal_ = false;
+    reset_errors(); // todo
+}
 
 void PIDPositionController::airsim_odom_cb(const nav_msgs::Odometry& odom_msg)
 {
@@ -105,6 +125,10 @@ void PIDPositionController::airsim_odom_cb(const nav_msgs::Odometry& odom_msg)
     curr_position_.y = odom_msg.pose.pose.position.y;
     curr_position_.z = odom_msg.pose.pose.position.z;
     curr_position_.yaw = utils::get_yaw_from_quat_msg(odom_msg.pose.pose.orientation);
+    geometry_msgs::Quaternion quat_msg = odom_msg.pose.pose.orientation; // Rwb
+    tf2::Quaternion quat_tf;
+    tf2::fromMsg(quat_msg, quat_tf);
+    curr_rotation_ = tf2::Matrix3x3(quat_tf).inverse(); // Rbw
 }
 
 // todo maintain internal representation as eigen vec?
@@ -228,10 +252,23 @@ void PIDPositionController::compute_control_cmd()
 
     prev_error_ = curr_error_;
 
-    vel_cmd_.twist.linear.x = p_term_x + d_term_x;
-    vel_cmd_.twist.linear.y = p_term_y + d_term_y;
-    vel_cmd_.twist.linear.z = p_term_z + d_term_z;
-    vel_cmd_.twist.angular.z = p_term_yaw + d_term_yaw; // todo
+    // transform to body frame vel
+    double vx_w = p_term_x + d_term_x;
+    double vy_w = p_term_y + d_term_y;
+    double vz_w = p_term_z + d_term_z;
+    tf2::Vector3 vel_w(vx_w, vy_w, vz_w);
+    // transform to imu
+
+    tf2::Matrix3x3 R_b1_b2(1.0000000, 0.0000000, 0.0000000,
+                           0.0000000, -1.0000000, -0.0000000,
+                           0.0000000, 0.0000000, -1.0000000);
+    tf2::Vector3 vel_b = R_b1_b2 * curr_rotation_ * vel_w; // Rbw
+    double cur_yaw = p_term_yaw + d_term_yaw;              // todo
+
+    vel_cmd_.twist.linear.x = vel_b[0];
+    vel_cmd_.twist.linear.y = vel_b[1];
+    vel_cmd_.twist.linear.z = vel_b[2];
+    vel_cmd_.twist.angular.z = -cur_yaw;
 }
 
 void PIDPositionController::enforce_dynamic_constraints()
@@ -258,6 +295,6 @@ void PIDPositionController::enforce_dynamic_constraints()
 
 void PIDPositionController::publish_control_cmd()
 {
-    airsim_vel_cmd_world_frame_pub_.publish(vel_cmd_);
+    airsim_vel_cmd_body_frame_pub_.publish(vel_cmd_);
     ROS_INFO("velcmd: %f %f %f %f", vel_cmd_.twist.linear.x, vel_cmd_.twist.linear.y, vel_cmd_.twist.linear.z, vel_cmd_.twist.angular.z);
 }

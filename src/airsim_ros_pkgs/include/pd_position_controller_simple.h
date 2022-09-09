@@ -7,6 +7,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <nav_msgs/Odometry.h>
+#include <airsim_ros_pkgs/PositionCommand.h>
 #include <math.h>
 #include <airsim_ros_pkgs/VelCmd.h>
 #include <airsim_ros_pkgs/SetLocalPosition.h>
@@ -76,6 +77,7 @@ public:
     bool gps_goal_srv_override_cb(airsim_ros_pkgs::SetGPSPosition::Request& request, airsim_ros_pkgs::SetGPSPosition::Response& response);
 
     // ROS subscriber callbacks
+    void airsim_position_cmd_cb(const airsim_ros_pkgs::PositionCommand::ConstPtr &cmd);
     void airsim_odom_cb(const nav_msgs::Odometry& odom_msg);
     void home_geopoint_cb(const airsim_ros_pkgs::GPSYaw& gps_msg);
 
@@ -100,6 +102,8 @@ private:
     PIDParams params_;
     XYZYaw target_position_;
     XYZYaw curr_position_;
+    tf2::Matrix3x3 curr_rotation_;
+
     XYZYaw prev_error_;
     XYZYaw curr_error_;
 
@@ -114,8 +118,9 @@ private:
     bool got_goal_once_;
     // todo check for odom msg being older than n sec
 
-    ros::Publisher airsim_vel_cmd_world_frame_pub_;
+    ros::Publisher airsim_vel_cmd_body_frame_pub_;
     ros::Subscriber airsim_odom_sub_;
+    ros::Subscriber airsim_position_cmd_sub_;
     ros::Subscriber home_geopoint_sub_;
     ros::ServiceServer local_position_goal_srvr_;
     ros::ServiceServer local_position_goal_override_srvr_;
